@@ -1,9 +1,9 @@
 package main
 
 import (
-	"Distributed-object-storage-golang/heartbeat"
-	"Distributed-object-storage-golang/locate"
-	"Distributed-object-storage-golang/objects"
+	"Distributed-object-storage-golang/dataServers/heartbeat"
+	"Distributed-object-storage-golang/dataServers/locate"
+	"Distributed-object-storage-golang/dataServers/objects"
 	"flag"
 	"log"
 	"net/http"
@@ -11,14 +11,16 @@ import (
 )
 
 var (
-	listen_address string
-	storage_root   string
+	listen_address  string
+	storage_root    string
+	rabbitmq_server string
 )
 
 // 绑定参数
 func flagInit() {
 	flag.StringVar(&listen_address, "LISTEN_ADDRESS", ":8881", "端口地址")
-	flag.StringVar(&storage_root, "STORAGE_ROOT", "F:/go/src/Distributed-object-storage-golang/storage", "存储地址")
+	flag.StringVar(&storage_root, "STORAGE_ROOT", "F:/go/src/Distributed-object-storage-golang/dataServers/storage", "存储地址")
+	flag.StringVar(&rabbitmq_server, "RABBITMQ_SERVER", "amqp://guest:guest@localhost:5672", "rabbitmq服务地址")
 }
 
 func main() {
@@ -27,7 +29,7 @@ func main() {
 	// 设置环境变量
 	os.Setenv("LISTEN_ADDRESS", listen_address)
 	os.Setenv("STORAGE_ROOT", storage_root)
-
+	os.Setenv("RABBITMQ_SERVER", rabbitmq_server)
 	// 往apiServer发送心跳
 	go heartbeat.StartHeartbeat()
 

@@ -16,6 +16,7 @@ type RabbitMQ struct {
 
 // 创建一个新的消息信道
 func New(s string) *RabbitMQ {
+	// TCP连接
 	conn, e := amqp.Dial(s)
 	if e != nil {
 		panic(e)

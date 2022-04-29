@@ -27,9 +27,8 @@ func StratLocate() {
 		if err != nil {
 			panic(err)
 		}
-		// 如果存在，则发送该服务地址
 		if Locate(os.Getenv("STORAGE_ROOT") + "/objects/" + object) {
-			mq.Send(msg.ReplyTo, os.Getenv("LISTEND_ADDRESS"))
+			mq.Send(msg.ReplyTo, os.Getenv("LISTEN_ADDRESS"))
 		}
 	}
 }
