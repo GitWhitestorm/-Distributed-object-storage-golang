@@ -3,14 +3,32 @@ package locate
 import (
 	"Distributed-object-storage-golang/rabbitmq"
 	"os"
+	"path/filepath"
 	"strconv"
+	"sync"
 )
 
-// 检测文件是否存在
-func Locate(name string) bool {
-	_, err := os.Stat(name)
+// 对象是否存在
+var objects = make(map[string]struct{})
+var mutex sync.Mutex
 
-	return !os.IsNotExist(err)
+// 检测文件是否存在
+func Locate(hash string) bool {
+	mutex.Lock()
+	_, ok := objects[hash]
+	mutex.Unlock()
+	return ok
+}
+
+func Add(hash string) {
+	mutex.Lock()
+	objects[hash] = struct{}{}
+	mutex.Unlock()
+}
+func Delete(hash string) {
+	mutex.Lock()
+	delete(objects, hash)
+	mutex.Unlock()
 }
 
 func StratLocate() {
@@ -23,12 +41,22 @@ func StratLocate() {
 	ch := mq.Consume()
 	// 判断访问的对象是否存在
 	for msg := range ch {
-		object, err := strconv.Unquote(string(msg.Body))
+		hash, err := strconv.Unquote(string(msg.Body))
 		if err != nil {
 			panic(err)
 		}
-		if Locate(os.Getenv("STORAGE_ROOT") + "/objects/" + object) {
+		if Locate(hash) {
 			mq.Send(msg.ReplyTo, os.Getenv("LISTEN_ADDRESS"))
 		}
+	}
+}
+
+// 每次启动只运行一次
+// 从磁盘中读取文件名，添加到objects中
+func CollectObjects() {
+	files, _ := filepath.Glob(os.Getenv("STORAGE_ROOT") + "/objects/*")
+	for i := range files {
+		hash := filepath.Base(files[i])
+		objects[hash] = struct{}{}
 	}
 }

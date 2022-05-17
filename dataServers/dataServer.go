@@ -4,6 +4,7 @@ import (
 	"Distributed-object-storage-golang/dataServers/heartbeat"
 	"Distributed-object-storage-golang/dataServers/locate"
 	"Distributed-object-storage-golang/dataServers/objects"
+	"Distributed-object-storage-golang/dataServers/temp"
 	"flag"
 	"log"
 	"net/http"
@@ -30,11 +31,13 @@ func main() {
 	os.Setenv("LISTEN_ADDRESS", listen_address)
 	os.Setenv("STORAGE_ROOT", storage_root)
 	os.Setenv("RABBITMQ_SERVER", rabbitmq_server)
+	locate.CollectObjects()
 	// 往apiServer发送心跳
 	go heartbeat.StartHeartbeat()
 
 	// 开启监听服务，如果监听到请求的对象存在自己的机器上时，则往dateServers发送自己的地址
 	go locate.StratLocate()
+	http.HandleFunc("/temp/", temp.Handler)
 	http.HandleFunc("/objects/", objects.Handler)
 	log.Fatal(http.ListenAndServe(os.Getenv("LISTEN_ADDRESS"), nil))
 }

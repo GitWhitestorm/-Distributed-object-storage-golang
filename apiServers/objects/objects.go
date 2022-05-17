@@ -43,9 +43,10 @@ func put(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+	size := utils.GetSizeFromHeader(r.Header)
 
 	// 存储对象
-	code, err := storeObject(r.Body, url.PathEscape(hash))
+	code, err := storeObject(r.Body, url.PathEscape(hash), size)
 
 	if err != nil {
 		log.Println(err)
@@ -59,7 +60,7 @@ func put(w http.ResponseWriter, r *http.Request) {
 	}
 
 	name := strings.Split(r.URL.EscapedPath(), "/")[2]
-	size := utils.GetSizeFromHeader(r.Header)
+
 	log.Println("objectsEnv:" + os.Getenv("ES_SERVER"))
 	// 在es中存储对象元数据
 	err = elasticsearch.AddVersion(name, hash, size)
@@ -72,27 +73,32 @@ func put(w http.ResponseWriter, r *http.Request) {
 }
 
 // 存储对象，第一个参数为要存储的对象，第二个参数为对象的名字
-func storeObject(r io.Reader, object string) (int, error) {
-	stream, err := putStream(object)
+func storeObject(r io.Reader, hash string, size int64) (int, error) {
+	// 定位object是否存在
+	if locate.Exist(url.PathEscape(hash)) {
+		return http.StatusOK, nil
+	}
+
+	stream, err := putStream(url.PathEscape(hash), size)
 
 	if err != nil {
 		return http.StatusServiceUnavailable, err
 	}
-
-	// 复制
-	io.Copy(stream, r)
-
-	err = stream.Close()
-
-	if err != nil {
-		return http.StatusInternalServerError, err
+	// 类型Unix的tee命令，读取reader相当于读取r，同时也写入stream
+	reader := io.TeeReader(r, stream)
+	d := utils.CalculateHash(reader)
+	if d != hash {
+		// 取消提交
+		stream.Commit(false)
+		return http.StatusBadRequest, fmt.Errorf("object hash mismatch calculated=%s,requested=%s", d, hash)
 	}
+	stream.Commit(true)
 
 	return http.StatusOK, nil
 }
 
 // 以object为参数，返回PutStream对象
-func putStream(object string) (*objectstream.PutStream, error) {
+func putStream(hash string, size int64) (*objectstream.TempPutStream, error) {
 
 	// 选取随机一个在线服务节点
 	server := heartbeat.ChooseRandomDataServer()
@@ -101,7 +107,7 @@ func putStream(object string) (*objectstream.PutStream, error) {
 		return nil, fmt.Errorf("cannot find any dataServer")
 	}
 
-	return objectstream.NewPutStream(server, object), nil
+	return objectstream.NewTempPutStream(server, hash, size)
 }
 
 func get(w http.ResponseWriter, r *http.Request) {
