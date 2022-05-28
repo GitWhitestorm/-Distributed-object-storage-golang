@@ -2,12 +2,12 @@ package objects
 
 import (
 	"Distributed-object-storage-golang/dataServers/locate"
-	"Distributed-object-storage-golang/utils"
+	"crypto/md5"
 	"io"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -33,12 +33,17 @@ func get(w http.ResponseWriter, r *http.Request) {
 
 }
 func getFile(hash string) string {
-	file := os.Getenv("STORAGE_ROOT") + "/objects/" + hash
-	f, _ := os.Open(file)
-	d := url.PathEscape(utils.CalculateHash(f))
-	f.Close()
-	if d != hash {
-		log.Println("object hash mismatch,remove", file)
+	files,_ := filepath.Glob(os.Getenv("STORAGE_ROOT")+"/objects/"+ hash + ".*")
+	if len(files) != 1{
+		return ""
+	}
+	file := files[0]
+	h := md5.New()
+	sendFile(h,file)
+	d := string(h.Sum(nil))
+	hd := strings.Split(file,".")[2]
+	if d != hd{
+		log.Println("object hash mismatch,remove",file)
 		locate.Delete(hash)
 		os.Remove(file)
 		return ""

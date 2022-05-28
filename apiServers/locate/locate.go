@@ -2,11 +2,12 @@ package locate
 
 import (
 	"Distributed-object-storage-golang/rabbitmq"
+	"Distributed-object-storage-golang/rs"
+	"Distributed-object-storage-golang/types"
 	"encoding/json"
-	"fmt"
+
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -31,7 +32,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 }
 
 // 广播给数据服务节点定位
-func Locate(objectName string) string {
+func Locate(objectName string) (locateInfo map[int]string) {
 	mq := rabbitmq.New(os.Getenv("RABBITMQ_SERVER"))
 
 	// 往消息队列中推送
@@ -45,14 +46,21 @@ func Locate(objectName string) string {
 		mq.Close()
 	}()
 
-	msg := <-ch
-	// 定位成功
+	locateInfo = make(map[int]string)
+	for i := 0; i < rs.ALL_SHARDS; i++ {
+		msg := <-ch
+		if len(msg.Body) == 0 {
+			return
+		}
+		// 定位成功
+		var info types.LocateMessage
+		json.Unmarshal(msg.Body,&info)
+	
+		locateInfo[info.Id] = info.Addr
+	}
 
-	fmt.Println("api-locate", string(msg.Body))
-	s, _ := strconv.Unquote(string(msg.Body))
-
-	return s
+	return locateInfo
 }
 func Exist(name string) bool {
-	return Locate(name) != ""
+	return len(Locate(name)) >= rs.DATA_SHARDS
 }

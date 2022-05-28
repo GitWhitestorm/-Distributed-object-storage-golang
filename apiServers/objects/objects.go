@@ -3,8 +3,8 @@ package objects
 import (
 	"Distributed-object-storage-golang/apiServers/heartbeat"
 	"Distributed-object-storage-golang/apiServers/locate"
-	"Distributed-object-storage-golang/apiServers/objectstream"
 	"Distributed-object-storage-golang/elasticsearch"
+	"Distributed-object-storage-golang/rs"
 	"Distributed-object-storage-golang/utils"
 	"fmt"
 	"io"
@@ -98,16 +98,16 @@ func storeObject(r io.Reader, hash string, size int64) (int, error) {
 }
 
 // 以object为参数，返回PutStream对象
-func putStream(hash string, size int64) (*objectstream.TempPutStream, error) {
+func putStream(hash string, size int64) (*rs.RSPutStream, error) {
 
-	// 选取随机一个在线服务节点
-	server := heartbeat.ChooseRandomDataServer()
-	// 没有服务节点可用
-	if server == "" {
-		return nil, fmt.Errorf("cannot find any dataServer")
+	// 选取随机一组在线服务节点
+	server := heartbeat.ChooseRandomDataServer(rs.ALL_SHARDS, nil)
+	// 没有足够的服务节点可用
+	if len(server) != rs.ALL_SHARDS {
+		return nil, fmt.Errorf("cannot find enough dataServer")
 	}
 
-	return objectstream.NewTempPutStream(server, hash, size)
+	return rs.NewRSPutStream(server, hash, size)
 }
 
 func get(w http.ResponseWriter, r *http.Request) {
@@ -139,24 +139,33 @@ func get(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	object := url.PathEscape(metadata.Hash)
-	stream, err := getStream(object)
+	hash := url.PathEscape(metadata.Hash)
+	stream, err := getStream(hash, metadata.Size)
 	if err != nil {
 		log.Println(err)
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-
-	io.Copy(w, stream)
+	_, err = io.Copy(w, stream)
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	stream.Close()
 }
-func getStream(object string) (io.Reader, error) {
-	server := locate.Locate(object)
+func getStream(hash string, size int64) (*rs.RSGetStream, error) {
+	locateInfo := locate.Locate(hash)
+	if len(locateInfo) < rs.DATA_SHARDS {
+		return nil, fmt.Errorf("object %s locate fail,result %v", hash, locateInfo)
+	}
+	dataServers := make([]string, 0)
 
-	if server == "" {
-		return nil, fmt.Errorf("object %s locate fail", object)
+	if len(locateInfo) != rs.ALL_SHARDS {
+		dataServers = heartbeat.ChooseRandomDataServer(rs.ALL_SHARDS-len(locateInfo), locateInfo)
 	}
 
-	return objectstream.NewGetStream(server, object)
+	return rs.NewRsGetStream(locateInfo, dataServers, hash, size)
 }
 
 func del(w http.ResponseWriter, r *http.Request) {

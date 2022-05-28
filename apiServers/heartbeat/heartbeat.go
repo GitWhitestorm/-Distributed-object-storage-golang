@@ -73,12 +73,34 @@ func GetDataServers() []string {
 	return ds
 }
 
-// 随机选择一个节点
-func ChooseRandomDataServer() string {
-	ds := GetDataServers()
-	n := len(ds)
-	if n == 0 {
-		return ""
+// 随机选择一组节点
+// n表示需要随机多少个数据服务节点
+// exclude表示返回的随机数据节不能包括哪些节点
+// 因为当手机收到的反馈信息不足6个，此时我们需要进行数据修复
+// 即根据目前已有的分片，将丢失的分片复原出来并在此上传到数据服务
+// 所以，很显然的我们需要将已有的分片所在数据服务节点排除
+func ChooseRandomDataServer(n int, exclude map[int]string) (ds []string) {
+
+	candidates := make([]string, 0)
+	reverseExcludeMap := make(map[string]int)
+	for id, addr := range exclude {
+		reverseExcludeMap[addr] = id
 	}
-	return ds[rand.Intn(n)]
+	servers := GetDataServers()
+	for i := range servers {
+		s := servers[i]
+		_, excluded := reverseExcludeMap[s]
+		if !excluded {
+			candidates = append(candidates, s)
+		}
+	}
+	length := len(candidates)
+	if length < n {
+		return
+	}
+	p := rand.Perm(length)
+	for i := 0; i < n; i++ {
+		ds = append(ds, candidates[p[i]])
+	}
+	return
 }

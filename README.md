@@ -70,3 +70,17 @@ GET http://127.0.0.1:9200/metadata/_search?&q=name:#{name}&sort=version:desc&fro
 - 在接口服务将对象传输到数据服务时同时计算其散列值
 - 对比散列值，如果一致，接口服务需要通知数据服务将临时对象转换为正式对象，不一致则删除
 
+## 数据冗余和即时修复
+
+### RS纠删码码冗余策略
+
+   **编码：**给定n个数据块（Data block）D1、D2……Dn，和一个正整数m，RS根据n个数据块生成m个编码块（Code block），C1、C2……Cm。
+    **解码：**对于任意的n和m，从n个原始数据块和m个编码块中任取n块就能解码出原始数据，即RS最多容忍m个数据块或者编码块同时丢失。
+
+### PUT对象
+
+![image-20220528092423634](https://raw.githubusercontent.com/GitWhitestorm/blog-image/master/img/image-20220528092423634.png)
+
+### GET对象
+
+![image-20220528092533534](https://raw.githubusercontent.com/GitWhitestorm/blog-image/master/img/image-20220528092533534.png)

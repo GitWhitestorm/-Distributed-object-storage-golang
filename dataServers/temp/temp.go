@@ -2,11 +2,13 @@ package temp
 
 import (
 	"Distributed-object-storage-golang/dataServers/locate"
+	"Distributed-object-storage-golang/utils"
 	"encoding/json"
 	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -174,12 +176,25 @@ func put(w http.ResponseWriter, r *http.Request) {
 	file.Close()
 	commitTempObject(datFile, tempinfo)
 }
+func (t *tempInfo)hash() string{
+	s := strings.Split(t.Name,".")
+	return s[0]
+}
+func (t *tempInfo)id()int{
+	s := strings.Split(t.Name,".")
+	id, _ := strconv.Atoi(s[1])
+	return id
+}
+
 func commitTempObject(datFile string, tempinfo *tempInfo) {
-	err := os.Rename(datFile, os.Getenv("STORAGE_ROOT")+"/objects/"+tempinfo.Name)
+	file,_ := os.Open(datFile)
+	d := url.PathEscape(utils.CalculateHash(file))
+	file.Close()
+	err := os.Rename(datFile, os.Getenv("STORAGE_ROOT")+"/objects/"+tempinfo.Name+"."+d)
 	if err != nil {
 		log.Println(err)
 	}
-	locate.Add(tempinfo.Name)
+	locate.Add(tempinfo.hash(),tempinfo.id())
 }
 
 func delete(w http.ResponseWriter, r *http.Request) {

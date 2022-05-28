@@ -2,27 +2,32 @@ package locate
 
 import (
 	"Distributed-object-storage-golang/rabbitmq"
+	"Distributed-object-storage-golang/types"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 )
 
 // 对象是否存在
-var objects = make(map[string]struct{})
+var objects = make(map[string]int)
 var mutex sync.Mutex
 
-// 检测文件是否存在
-func Locate(hash string) bool {
+// 检测文件是否存在,若存在返回分片id
+func Locate(hash string) int {
 	mutex.Lock()
-	_, ok := objects[hash]
+	id, ok := objects[hash]
 	mutex.Unlock()
-	return ok
+	if !ok {
+		return -1
+	}
+	return id
 }
 
-func Add(hash string) {
+func Add(hash string, id int) {
 	mutex.Lock()
-	objects[hash] = struct{}{}
+	objects[hash] = id
 	mutex.Unlock()
 }
 func Delete(hash string) {
@@ -45,8 +50,10 @@ func StratLocate() {
 		if err != nil {
 			panic(err)
 		}
-		if Locate(hash) {
-			mq.Send(msg.ReplyTo, os.Getenv("LISTEN_ADDRESS"))
+		id := Locate(hash)
+		if id != -1 {
+			mq.Send(msg.ReplyTo,types.LocateMessage{Addr: os.Getenv("LISTEN_ADDRESS"),Id: id})
+
 		}
 	}
 }
@@ -56,7 +63,15 @@ func StratLocate() {
 func CollectObjects() {
 	files, _ := filepath.Glob(os.Getenv("STORAGE_ROOT") + "/objects/*")
 	for i := range files {
-		hash := filepath.Base(files[i])
-		objects[hash] = struct{}{}
+		file := strings.Split(filepath.Base(files[i]),".")
+		if len(file) != 3{
+			panic(files[i])
+		}
+		hash := file[0]
+		id,err := strconv.Atoi(file[1])
+		if err != nil{
+			panic(err)
+		}
+		objects[hash] = id
 	}
 }

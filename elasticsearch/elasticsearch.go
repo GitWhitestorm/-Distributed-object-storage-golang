@@ -21,7 +21,7 @@ type Metadata struct {
 // 通过name和verison获取元数据
 func getMetedata(name string, versionId int) (meat Metadata, err error) {
 	// 通过http访问获取数据
-	url := fmt.Sprintf("http://%s/metadata/objects/%s_%d/_source",
+	url := fmt.Sprintf("http://%s/metadata/_doc/%s_%d/_source",
 		os.Getenv("ES_SERVER"), name, versionId)
 	response, err := http.Get(url)
 	if err != nil {
