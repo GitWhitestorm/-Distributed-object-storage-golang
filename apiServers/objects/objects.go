@@ -31,6 +31,10 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		del(w, r)
 		return
 	}
+	if m == http.MethodPost {
+		post(w, r)
+		return
+	}
 
 	w.WriteHeader(http.StatusMethodNotAllowed)
 }
@@ -114,44 +118,39 @@ func get(w http.ResponseWriter, r *http.Request) {
 	name := strings.Split(r.URL.EscapedPath(), "/")[2]
 	versionId := r.URL.Query()["version"]
 	version := 0
-
 	var err error
 	if len(versionId) != 0 {
-		// 获取版本号
 		version, err = strconv.Atoi(versionId[0])
-
 		if err != nil {
 			log.Println(err)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 	}
-
-	// 获取元数据
-	metadata, err := elasticsearch.GetMetadata(name, version)
-
+	meta, err := elasticsearch.GetMetadata(name, version)
 	if err != nil {
 		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	if metadata.Hash == "" {
+	if meta.Hash == "" {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	hash := url.PathEscape(metadata.Hash)
-	stream, err := getStream(hash, metadata.Size)
+	hash := url.PathEscape(meta.Hash)
+	stream, err := getStream(hash, meta.Size)
 	if err != nil {
 		log.Println(err)
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	_, err = io.Copy(w, stream)
-	if err != nil {
-		log.Println(err)
-		w.WriteHeader(http.StatusNotFound)
-		return
+	offset := utils.GetOffsetFromHeader(r.Header)
+	if offset != 0 {
+		stream.Seek(offset, io.SeekCurrent)
+		w.Header().Set("content-range", fmt.Sprintf("bytes%d-%d/%d", offset, meta.Size-1, meta.Size))
+
 	}
+	io.Copy(w, stream)
 	stream.Close()
 }
 func getStream(hash string, size int64) (*rs.RSGetStream, error) {
@@ -188,5 +187,47 @@ func del(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+
+}
+
+func post(w http.ResponseWriter, r *http.Request) {
+	name := strings.Split(r.URL.EscapedPath(), "/")[2]
+	size, err := strconv.ParseInt(r.Header.Get("size"), 0, 64)
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	hash := utils.GetHashFromHeader(r.Header)
+	if hash == "" {
+		log.Println("missing object hash in digest header")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if locate.Exist(url.PathEscape(hash)) {
+		err := elasticsearch.AddVersion(name, hash, size)
+		if err != nil {
+			log.Println(err)
+			w.WriteHeader(http.StatusInternalServerError)
+		} else {
+			w.WriteHeader(http.StatusOK)
+		}
+		return
+	}
+	ds := heartbeat.ChooseRandomDataServer(rs.ALL_SHARDS, nil)
+	if len(ds) != rs.ALL_SHARDS {
+		log.Println("cannot find enough dataServer")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	stream, err := rs.NewRSResumablePutStream(ds, name, hash, size)
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("location", "/temp/"+url.PathEscape(stream.ToToken()))
+	w.WriteHeader(http.StatusCreated)
 
 }

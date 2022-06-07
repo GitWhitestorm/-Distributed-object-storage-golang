@@ -84,3 +84,6 @@ GET http://127.0.0.1:9200/metadata/_search?&q=name:#{name}&sort=version:desc&fro
 ### GET对象
 
 ![image-20220528092533534](https://raw.githubusercontent.com/GitWhitestorm/blog-image/master/img/image-20220528092533534.png)
+
+## 断点续传
+

@@ -2,8 +2,13 @@ package rs
 
 import (
 	"Distributed-object-storage-golang/apiServers/objectstream"
+	"Distributed-object-storage-golang/utils"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
+	"log"
+	"net/http"
 
 	"github.com/klauspost/reedsolomon"
 )
@@ -221,4 +226,92 @@ func (s *RSGetStream) Close() {
 			s.writers[i].(*objectstream.TempPutStream).Commit(true)
 		}
 	}
+}
+
+type resumableToken struct {
+	Name    string
+	Size    int64
+	Hash    string
+	Servers []string
+	Uuids   []string
+}
+
+type RSResumablePutStream struct {
+	*RSPutStream
+	*resumableToken
+}
+
+func NewRSResumablePutStream(dataServers []string, name, hash string,
+	size int64) (*RSResumablePutStream, error) {
+	putStream, err := NewRSPutStream(dataServers, hash, size)
+	if err != nil {
+		return nil, err
+	}
+	uuids := make([]string, ALL_SHARDS)
+	for i := range uuids {
+		uuids[i] = putStream.writes[i].(*objectstream.TempPutStream).Uuid
+
+	}
+	token := &resumableToken{name, size, hash, dataServers, uuids}
+	return &RSResumablePutStream{putStream, token}, nil
+
+}
+
+// 生成字符串token
+func (s *RSResumablePutStream) ToToken() string {
+	b, _ := json.Marshal(s)
+	return base64.StdEncoding.EncodeToString(b)
+}
+
+// offest表示需要跳过多少字节，whence表示起跳点
+func (s *RSGetStream) Seek(offset int64, whence int) (int64, error) {
+	if whence != io.SeekCurrent {
+		panic("only support SeekCurrent")
+	}
+	if offset < 0 {
+		panic("only support forward seek")
+	}
+	for offset != 0 {
+		length := int64(BLOCK_SIZE)
+		if offset < length {
+			length = offset
+		}
+		buf := make([]byte, length)
+		io.ReadFull(s, buf)
+		offset -= length
+	}
+	return offset, nil
+}
+func NewRSResumablePutStreamFromToken(token string) (*RSResumablePutStream, error) {
+	b, err := base64.StdEncoding.DecodeString(token)
+	if err != nil {
+		return nil, err
+	}
+	var t resumableToken
+	err = json.Unmarshal(b, &t)
+	if err != nil {
+		return nil, err
+	}
+	writers := make([]io.Writer, ALL_SHARDS)
+	for i := range writers {
+		writers[i] = &objectstream.TempPutStream{Server: t.Servers[i], Uuid: t.Uuids[i]}
+	}
+	enc := NewEncoder(writers)
+	return &RSResumablePutStream{&RSPutStream{enc}, &t}, nil
+}
+func (s *RSResumablePutStream) CurrentSize() int64 {
+	r, err := http.Head(fmt.Sprintf("http://%s/temp/%s", s.Servers[0], s.Uuids[0]))
+	if err != nil {
+		log.Println(err)
+		return -1
+	}
+	if r.StatusCode != http.StatusOK {
+		log.Println(r.StatusCode)
+		return -1
+	}
+	size := utils.GetSizeFromHeader(r.Header) * DATA_SHARDS
+	if size > s.Size {
+		size = s.Size
+	}
+	return size
 }

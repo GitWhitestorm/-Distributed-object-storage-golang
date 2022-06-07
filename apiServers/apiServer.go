@@ -32,6 +32,7 @@ func main() {
 	os.Setenv("RABBITMQ_SERVER", rabbitmq_server)
 	os.Setenv("ES_SERVER", es_server)
 	go heartbeat.ListenHeartbeat()
+
 	// 对象服务
 	http.HandleFunc("/objects/", objects.Handler)
 	// 定位服务

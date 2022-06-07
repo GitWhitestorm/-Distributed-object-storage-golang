@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
 // 从Http头获取hash值
@@ -32,4 +33,17 @@ func CalculateHash(r io.Reader) string {
 	io.Copy(h, r)
 	return fmt.Sprintf("%x", h.Sum(nil))
 
+}
+
+func GetOffsetFromHeader(h http.Header) int64 {
+	byteRange := h.Get("range")
+	if len(byteRange) < 7 {
+		return 0
+	}
+	if byteRange[:6] != "bytes=" {
+		return 0
+	}
+	bytePos := strings.Split(byteRange[6:], "-")
+	offset, _ := strconv.ParseInt(bytePos[0], 0, 64)
+	return offset
 }
