@@ -4,6 +4,7 @@ import (
 	"Distributed-object-storage-golang/dataServers/locate"
 	"Distributed-object-storage-golang/utils"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -18,6 +19,14 @@ import (
 
 func Handler(w http.ResponseWriter, r *http.Request) {
 	method := r.Method
+	if method == http.MethodHead {
+		head(w, r)
+		return
+	}
+	if method == http.MethodGet {
+		get(w, r)
+		return
+	}
 	if method == http.MethodPut {
 		put(w, r)
 		return
@@ -176,25 +185,25 @@ func put(w http.ResponseWriter, r *http.Request) {
 	file.Close()
 	commitTempObject(datFile, tempinfo)
 }
-func (t *tempInfo)hash() string{
-	s := strings.Split(t.Name,".")
+func (t *tempInfo) hash() string {
+	s := strings.Split(t.Name, ".")
 	return s[0]
 }
-func (t *tempInfo)id()int{
-	s := strings.Split(t.Name,".")
+func (t *tempInfo) id() int {
+	s := strings.Split(t.Name, ".")
 	id, _ := strconv.Atoi(s[1])
 	return id
 }
 
 func commitTempObject(datFile string, tempinfo *tempInfo) {
-	file,_ := os.Open(datFile)
+	file, _ := os.Open(datFile)
 	d := url.PathEscape(utils.CalculateHash(file))
 	file.Close()
 	err := os.Rename(datFile, os.Getenv("STORAGE_ROOT")+"/objects/"+tempinfo.Name+"."+d)
 	if err != nil {
 		log.Println(err)
 	}
-	locate.Add(tempinfo.hash(),tempinfo.id())
+	locate.Add(tempinfo.hash(), tempinfo.id())
 }
 
 func delete(w http.ResponseWriter, r *http.Request) {
@@ -203,4 +212,32 @@ func delete(w http.ResponseWriter, r *http.Request) {
 	datFile := infoFile + ".dat"
 	os.Remove(infoFile)
 	os.Remove(datFile)
+}
+func get(w http.ResponseWriter, r *http.Request) {
+	uuid := strings.Split(r.URL.EscapedPath(), "/")[2]
+	file, err := os.Open(os.Getenv("STORAGE_ROOT") + "/temp/" + uuid + ".dat")
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	defer file.Close()
+	io.Copy(w, file)
+}
+func head(w http.ResponseWriter, r *http.Request) {
+	uuid := strings.Split(r.URL.EscapedPath(), "/")[2]
+	file, err := os.Open(os.Getenv("STORAGE_ROOT") + "/temp/" + uuid + ".dat")
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("content-length", fmt.Sprintf("%d", info.Size()))
 }
