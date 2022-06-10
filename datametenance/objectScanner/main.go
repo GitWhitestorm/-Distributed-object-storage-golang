@@ -14,7 +14,7 @@ func main() {
 	files, _ := filepath.Glob(os.Getenv("STORAGE_ROOT") + "/objects/*")
 	for i := range files {
 		hash := strings.Split(filepath.Base(files[i]), ".")[0]
-		ver
+		verify(hash)
 	}
 }
 
