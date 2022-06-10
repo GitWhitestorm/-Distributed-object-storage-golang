@@ -3,6 +3,7 @@ package temp
 import (
 	"Distributed-object-storage-golang/dataServers/locate"
 	"Distributed-object-storage-golang/utils"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -198,11 +199,13 @@ func (t *tempInfo) id() int {
 func commitTempObject(datFile string, tempinfo *tempInfo) {
 	file, _ := os.Open(datFile)
 	d := url.PathEscape(utils.CalculateHash(file))
-	file.Close()
-	err := os.Rename(datFile, os.Getenv("STORAGE_ROOT")+"/objects/"+tempinfo.Name+"."+d)
-	if err != nil {
-		log.Println(err)
-	}
+	defer file.Close()
+	file.Seek(0, io.SeekStart)
+	w, _ := os.Create(os.Getenv("STORAGE_ROOT") + "/objects/" + tempinfo.Name + "." + d)
+	w2 := gzip.NewWriter(w)
+	io.Copy(w2, file)
+	w2.Close()
+	os.Remove(datFile)
 	locate.Add(tempinfo.hash(), tempinfo.id())
 }
 

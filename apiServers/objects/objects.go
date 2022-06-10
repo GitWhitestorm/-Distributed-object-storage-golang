@@ -139,7 +139,7 @@ func get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hash := url.PathEscape(meta.Hash)
-	stream, err := getStream(hash, meta.Size)
+	stream, err := GetStream(hash, meta.Size)
 	if err != nil {
 		log.Println(err)
 		w.WriteHeader(http.StatusNotFound)
@@ -169,7 +169,7 @@ func get(w http.ResponseWriter, r *http.Request) {
 	}
 	stream.Close()
 }
-func getStream(hash string, size int64) (*rs.RSGetStream, error) {
+func GetStream(hash string, size int64) (*rs.RSGetStream, error) {
 	locateInfo := locate.Locate(hash)
 	if len(locateInfo) < rs.DATA_SHARDS {
 		return nil, fmt.Errorf("object %s locate fail,result %v", hash, locateInfo)
